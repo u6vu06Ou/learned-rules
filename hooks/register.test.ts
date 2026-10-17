@@ -3,6 +3,7 @@ import {
   backendTag, buildIndex, buildInjection, dateStr, isApplicable, lessonsCmd,
   parseEntries, recordFailure, remindCmd,
 } from './lib'
+import { register } from './register'
 
 // A hand-rolled host for unit tests: in-memory fs, fixed env and clock —
 // the same shape the engine's `$` has for the calls the lib makes.
@@ -164,6 +165,56 @@ test('/lessons reports both counts and hands the agent triage instructions', asy
   const empty = unit$({ env: HOME, now: NOW })
   const quiet = await lessonsCmd(empty.$)
   expect(quiet.context.length).toBe(0)
+})
+
+// The real inject hook, fired the way a real session fires it: core's boot
+// assembles the context blocks (userEmail, currentDate, ...) and raises
+// `prompt.context` once per conversation; the hook answers the block list the
+// first user message carries. The test drives the hook straight out of
+// register.ts with the engine's event shape and an in-memory host.
+test('the prompt.context hook rides the learned-rules block onto the conversation', async () => {
+  const handlers: Record<string, unknown> = {}
+  const chainable = { catch: () => chainable } as unknown
+  const on = ((name: string, ...rest: unknown[]) => {
+    // a plain handler or a gated [match, handler]; keep the last one
+    const h = rest[rest.length - 1]
+    handlers[name] = h
+    return chainable
+  }) as unknown as Parameters<typeof register>[0]
+  register(on)
+
+  expect(handlers['prompt.context']).toBeDefined()
+  const hook = handlers['prompt.context'] as ($: any, e: any, next: any) => Promise<unknown>
+  const { $ } = unit$({
+    env: HOME,
+    now: NOW,
+    files: {
+      [RULES]: [
+        '## 2026-10-01 PURPLE-ELEPHANT lesson',
+        '- **condition**: whenever it comes up',
+        '- **event**: it bit',
+        '- **remedy**: quote PURPLE-ELEPHANT when you see this',
+        '',
+      ].join('\n'),
+      [REMINDERS]: JSON.stringify([
+        { id: 'r001', due: '2026-10-01', text: 'ZEBRA-CHECK the expiring thing', added: '2026-09-30', done: null },
+      ]),
+    },
+  })
+  const next = async (ev: any) => ev // identity: the block list stands as answered
+  const out = (await hook($, { blocks: [{ name: 'userEmail', text: 'someone@example.com' }] }, next)) as any
+  const learned = out.blocks.find((b: any) => b.name === 'learnedRules')
+  expect(learned).toBeDefined()
+  expect(learned.text).toContain('ZEBRA-CHECK')
+  expect(learned.text).toContain('PURPLE-ELEPHANT')
+  expect(learned.text).toContain('🔔 Due reminders (1)')
+  // core's own blocks ride through untouched
+  expect(out.blocks[0]).toMatchObject({ name: 'userEmail' })
+
+  // nothing worth saying passes core's list through unchanged
+  const empty = unit$({ env: HOME, now: NOW }).$
+  const quiet = (await hook(empty, { blocks: [] }, next)) as any
+  expect(quiet.blocks).toMatchObject([])
 })
 
 // Through the engine: the plugin's `tool.call` hook sees the failure the
