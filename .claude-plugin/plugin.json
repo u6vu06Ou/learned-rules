@@ -1,0 +1,1 @@
+{ "name": "learned-rules", "version": "0.1.0", "author": { "name": "u6vu06Ou" }, "description": "Learns from real tool failures into a curated rules file, injects a budgeted title index into each new conversation, and surfaces dated reminders when they come due. Zero model tokens." }

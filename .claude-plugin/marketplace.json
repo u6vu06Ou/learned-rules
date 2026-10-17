@@ -1,0 +1,6 @@
+{
+  "name": "learned-rules",
+  "owner": { "name": "u6vu06Ou" },
+  "description": "A Claude Code plugin that learns from real tool failures, re-injects a compact index of the lessons into new conversations, and surfaces dated reminders when they come due.",
+  "plugins": [{ "name": "learned-rules", "source": "./" }]
+}
